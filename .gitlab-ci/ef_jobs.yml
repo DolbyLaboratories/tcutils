@@ -1,0 +1,16 @@
+include:
+  project: ocean/utilities/pipeline_utilities
+  file: '/ci_templates/run_code_format_check_and_build.yml'
+  
+linux_build:
+  extends: .base_linux
+
+osx_build:
+  extends: .base_osx
+
+win_build:
+  extends: .base_windows
+  variables:
+    BUILD_CMD: python3 build.py --build_dir build
+                                --external_build_dir build_external
+                                -- -A x64

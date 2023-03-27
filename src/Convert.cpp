@@ -1,0 +1,75 @@
+// BSD 3-Clause License
+//
+// Copyright (c) 2022-2023, Dolby International AB.
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted
+// provided that the following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions
+// and the following disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of
+// conditions and the following disclaimer in the documentation and/or other materials provided with
+// the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to
+// endorse or promote products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+// IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+// FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
+// WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+#include "DropFrameHelpers.h"
+#include <cmath>
+#include <tcutils/Convert.h>
+
+using namespace Dolby::TcUtils;
+
+Seconds Convert::ToSeconds(Framerate framerate, DAMFSeconds damfSeconds)
+{
+    double t = damfSeconds.GetValue();
+    if (framerate.IsDrop())
+    {
+        const int32_t minutes = static_cast<int32_t>(t) / 60;
+        t -= static_cast<double>(dropFramesToRemoveForMinutes(minutes)) /
+             static_cast<double>(framerate.GetFrameCount());
+    }
+    return Seconds(framerate.ApplyInverseRatio(t));
+}
+
+Samples Convert::ToSamples(Seconds seconds, Samplerate samplerate)
+{
+    return Samples(static_cast<int64_t>(seconds.GetValue() * samplerate.GetValue() + 0.5));
+}
+
+Samples Convert::ToSamples(Framerate framerate, DAMFSeconds damfSeconds, Samplerate samplerate)
+{
+    return ToSamples(ToSeconds(framerate, damfSeconds), samplerate);
+}
+
+DAMFSeconds Convert::ToDAMFSeconds(Framerate framerate, Seconds seconds)
+{
+    double t = framerate.ApplyRatio(seconds.GetValue());
+    if (framerate.IsDrop())
+    {
+        const int32_t frames = static_cast<int32_t>(t * framerate.GetFrameCount());
+        t += static_cast<double>(dropFramesToAddForFrames(frames)) /
+             static_cast<double>(framerate.GetFrameCount());
+    }
+    return DAMFSeconds(t);
+}
+
+DAMFSeconds Convert::ToDAMFSeconds(Framerate framerate, Samples samples, Samplerate samplerate)
+{
+    const double hs = framerate.ApplyRatio(0.5 / samplerate.GetValue());
+    const double s  = static_cast<double>(samples.GetValue() + 0.5) / samplerate.GetValue();
+    const double t  = ToDAMFSeconds(framerate, Seconds(s)).GetValue() - hs;
+    const double tr = std::round(t);
+    return DAMFSeconds((std::abs(t - tr) < hs) ? tr : t);
+}

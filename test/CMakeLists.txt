@@ -1,0 +1,5 @@
+set(target_name tcutils_test)
+add_executable (${target_name} TimecodeTests.cpp FramerateTests.cpp ConvertTests.cpp FrameBoundaryTests.cpp TimecodeSamplesTests.cpp TimecodeSubframesTests.cpp EqualsProToolsTests.cpp VersionTest.cpp main.cpp)
+target_include_directories(${target_name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(${target_name} tcutils GTest::gtest)
+add_test(NAME ${target_name} COMMAND ${target_name} --gtest_output=xml)
