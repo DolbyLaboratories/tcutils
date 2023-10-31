@@ -550,9 +550,7 @@ namespace
 // Test incrementing and decrement operators with wrapping at midnight
 TEST_F(TimecodeTests, IncDecOperators)
 {
-    size_t cnt           = 0;
-    size_t numFramerates = 0;
-
+    size_t cnt = 0;
     for (auto framerate : Framerate::values())
     {
         // go from 23:00:00:00 to 01:00:00:00 and back
@@ -579,7 +577,6 @@ TEST_F(TimecodeTests, IncDecOperators)
             ASSERT_EQ(tc, tcCopy);
             cnt++;
         } while (tc != tcBegin);
-        numFramerates++;
     }
 
     // make sure the operation got executed as often as expected:
@@ -594,9 +591,7 @@ TEST_F(TimecodeTests, IncDecOperators)
 // Test incrementing and decrement operators with continuing at midnight
 TEST_F(TimecodeTests, IncDecOperatorsContinue)
 {
-    size_t cnt           = 0;
-    size_t numFramerates = 0;
-
+    size_t cnt = 0;
     for (auto framerate : Framerate::values())
     {
         // go from 23:00:00:00 to 25:00:00:00 and back
@@ -623,7 +618,6 @@ TEST_F(TimecodeTests, IncDecOperatorsContinue)
             ASSERT_EQ(tc, tcCopy);
             cnt++;
         } while (tc != tcBegin);
-        numFramerates++;
     }
 
     // make sure the operation got executed as often as expected:
