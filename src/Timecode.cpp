@@ -26,7 +26,7 @@
 // WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <cassert>
-#include <cstring>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <tcutils/Timecode.h>
@@ -82,7 +82,7 @@ namespace
         const double samplesPerFrame =
             samplerate.GetValue() / static_cast<double>(framerate.GetFrameCount());
         const double dsamples = static_cast<double>(frames.GetValue()) * samplesPerFrame;
-        return Samples(static_cast<int64_t>(framerate.ApplyInverseRatio(dsamples) + 0.5));
+        return Samples(static_cast<int64_t>(std::llround(framerate.ApplyInverseRatio(dsamples))));
     }
 
     Frames CalculateFrames(Framerate framerate,
@@ -98,7 +98,7 @@ namespace
         const double dsamples = framerate.ApplyRatio(static_cast<double>(samples.GetValue()) + 0.5);
         const double framesPerSample =
             static_cast<double>(framerate.GetFrameCount()) / samplerate.GetValue();
-        const int32_t frames = static_cast<int32_t>(dsamples * framesPerSample);
+        const auto frames = static_cast<int32_t>(dsamples * framesPerSample);
 
         switch (roundingMode)
         {
@@ -136,13 +136,13 @@ namespace
         {
             case RoundingMode::NEAREST:
             {
-                return Frames(
-                    static_cast<int32_t>(secondsRatioAdjusted * framerate.GetFrameCount() + 0.5));
+                return Frames(static_cast<int32_t>(
+                    std::lround(secondsRatioAdjusted * framerate.GetFrameCount())));
             }
             case RoundingMode::TRUNCATE:
             {
-                const double dframeCount = static_cast<double>(framerate.GetFrameCount());
-                const int32_t frames     = static_cast<int32_t>(secondsRatioAdjusted * dframeCount);
+                const auto dframeCount = static_cast<double>(framerate.GetFrameCount());
+                const auto frames      = static_cast<int32_t>(secondsRatioAdjusted * dframeCount);
 
                 // Due to rounding errors, it is possible that going from Timecode to seconds and
                 // back will leave us at the previous frame. By reconverting the next frame back to
@@ -180,11 +180,11 @@ namespace
         {
             case RoundingMode::NEAREST:
             {
-                return static_cast<int32_t>(framesCountingDroppedFrames + 0.5);
+                return static_cast<int32_t>(std::lround(framesCountingDroppedFrames));
             }
             case RoundingMode::TRUNCATE:
             {
-                const int32_t frames = static_cast<int32_t>(framesCountingDroppedFrames);
+                const auto frames = static_cast<int32_t>(framesCountingDroppedFrames);
 
                 // Due to rounding errors, it is possible that going from Timecode to seconds and
                 // back will leave us at the previous frame. By reconverting the next frame back to
@@ -422,7 +422,7 @@ std::string Timecode::ToString() const
 {
     char tmp[13];
     ToString(tmp, 13);
-    return std::string(tmp);
+    return {tmp};
 }
 
 DAMFSeconds Timecode::ToDAMFSeconds() const

@@ -28,11 +28,14 @@
 #include <cassert>
 #include <iomanip>
 #include <iostream>
+#include <limits> // digits10
 #include <regex>
 #include <sstream>
 #include <string>
+#include <tcutils/Convert.h>
 #include <tcutils/Framerate.h>
 #include <tcutils/Timecode.h>
+#include <tcutils/TimecodeSubframes.h>
 #include <tcutils/Version.h>
 
 using namespace Dolby::TcUtils;
@@ -129,7 +132,9 @@ int main(int argc, char** argv)
 
     std::cout << std::endl;
     std::cout << "Dolby TcUtils tcutility - version " << Version::GetString() << std::endl;
-    std::cout << std::endl;
+    std::cout << "This utility converts a given time into all formats handled by TcUtils."
+              << std::endl
+              << std::endl;
 
     if (argc < 2 ||
         (argc == 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")))
@@ -166,7 +171,9 @@ int main(int argc, char** argv)
         }
         std::cout << std::endl << "  samplerate default is " << samplerate.GetValue() << std::endl;
         std::cout << std::endl
-                  << "  rounding-mode default is " << ToString(roundingMode) << std::endl;
+                  << "  rounding-mode can be " << ToString(RoundingMode(RoundingMode::NEAREST))
+                  << " and " << ToString(RoundingMode(RoundingMode::TRUNCATE)) << ". Default is "
+                  << ToString(roundingMode) << std::endl;
         std::cout << std::endl;
 
         // exiting
@@ -245,7 +252,12 @@ int main(int argc, char** argv)
         }
     }
 
-    Timecode result;
+    Timecode timecode;
+    TimecodeSubframes timecodeSubframes;
+    Samples samples{0};
+    Seconds realSeconds{0.0};
+    DAMFSeconds damfSeconds{0.0};
+    Frames frames{0};
     std::string timeArgValueUsed;
 
     switch (timeFormatInfo.formatEnum)
@@ -255,35 +267,56 @@ int main(int argc, char** argv)
             {
                 timeArgValue[8] = ';';
             }
-            result           = Timecode(framerate, timeArgValue);
-            timeArgValueUsed = timeArgValue;
+            timecode          = Timecode(framerate, timeArgValue);
+            timeArgValueUsed  = timecode.ToString();
+            realSeconds       = timecode.ToSeconds();
+            damfSeconds       = timecode.ToDAMFSeconds();
+            samples           = timecode.ToSamples(samplerate);
+            timecodeSubframes = TimecodeSubframes(framerate, samples, samplerate, 100);
+            frames            = timecode.ToFrames();
             break;
         case TimeFormatInfo::T_DAMF:
         {
-            double d         = std::stod(timeArgValue);
-            timeArgValueUsed = ToString(d);
-            result           = Timecode(framerate, DAMFSeconds(d), roundingMode);
+            damfSeconds       = DAMFSeconds(std::stod(timeArgValue));
+            timeArgValueUsed  = ToString(damfSeconds.GetValue());
+            realSeconds       = Convert::ToSeconds(framerate, damfSeconds);
+            samples           = Convert::ToSamples(framerate, damfSeconds, samplerate);
+            timecode          = Timecode(framerate, damfSeconds, roundingMode);
+            timecodeSubframes = TimecodeSubframes(framerate, samples, samplerate, 100);
+            frames            = timecode.ToFrames();
             break;
         }
         case TimeFormatInfo::T_REAL:
         {
-            double d         = std::stod(timeArgValue);
-            timeArgValueUsed = ToString(d);
-            result           = Timecode(framerate, Seconds(d), roundingMode);
+            realSeconds       = Seconds(std::stod(timeArgValue));
+            timeArgValueUsed  = ToString(realSeconds.GetValue());
+            damfSeconds       = Convert::ToDAMFSeconds(framerate, realSeconds);
+            samples           = Convert::ToSamples(realSeconds, samplerate);
+            timecode          = Timecode(framerate, realSeconds, roundingMode);
+            timecodeSubframes = TimecodeSubframes(framerate, samples, samplerate, 100);
+            frames            = timecode.ToFrames();
             break;
         }
         case TimeFormatInfo::SAMPLE:
         {
-            int64_t i        = std::stoi(timeArgValue);
-            timeArgValueUsed = ToString(i);
-            result           = Timecode(framerate, Samples(i), samplerate, roundingMode);
+            samples           = Samples(std::stoi(timeArgValue));
+            timeArgValueUsed  = std::to_string(samples.GetValue());
+            realSeconds       = Seconds(samples.GetValue() / samplerate.GetValue());
+            damfSeconds       = Convert::ToDAMFSeconds(framerate, samples, samplerate);
+            timecode          = Timecode(framerate, samples, samplerate, roundingMode);
+            timecodeSubframes = TimecodeSubframes(framerate, samples, samplerate, 100);
+            frames            = timecode.ToFrames();
             break;
         }
         case TimeFormatInfo::FRAMES:
         {
-            int32_t i        = std::stoi(timeArgValue);
-            timeArgValueUsed = ToString(i);
-            result           = Timecode(framerate, Frames(i));
+            frames            = Frames(std::stoi(timeArgValue));
+            timeArgValueUsed  = ToString(frames.GetValue());
+            timecode          = Timecode(framerate, frames);
+            samples           = timecode.ToSamples(samplerate);
+            realSeconds       = timecode.ToSeconds();
+            damfSeconds       = timecode.ToDAMFSeconds();
+            timecodeSubframes = TimecodeSubframes(framerate, samples, samplerate, 100);
             break;
         }
         case TimeFormatInfo::UNDEFINED:
@@ -291,18 +324,21 @@ int main(int argc, char** argv)
             return -1;
     }
 
-    std::cout << std::setprecision(6) << std::fixed;
+    constexpr int maxPrecision{std::numeric_limits<double>::digits10 + 1};
+
     std::cout << timeFormatInfo.what << " " << timeArgValueUsed;
     std::cout << " at framerate " << framerate.ToString();
     std::cout << " and samplerate " << samplerate.GetValue() << std::endl;
-    std::cout << "corresponds with (not showing subframes, " << ToInfoString(roundingMode) << ")"
-              << std::endl
+    std::cout << "corresponds with" << std::endl << std::endl;
+    std::cout << " timecode: " << timecode.ToString() << " (" << ToInfoString(roundingMode) << ")"
               << std::endl;
-    std::cout << " timecode: " << result.ToString() << std::endl;
-    std::cout << "   t_real: " << result.ToSeconds().GetValue() << std::endl;
-    std::cout << "   t_damf: " << result.ToDAMFSeconds().GetValue() << std::endl;
-    std::cout << "   sample: " << result.ToSamples(samplerate).GetValue() << std::endl;
-    std::cout << "   frames: " << result.ToFrames().GetValue() << std::endl << std::endl;
+    std::cout << "           " << timecodeSubframes.ToString(true) << " "
+              << "(subframes)" << std::endl;
+    std::cout << std::setprecision(maxPrecision) << std::fixed;
+    std::cout << "   t_real: " << realSeconds.GetValue() << std::endl;
+    std::cout << "   t_damf: " << damfSeconds.GetValue() << std::endl;
+    std::cout << "   sample: " << samples.GetValue() << std::endl;
+    std::cout << "   frames: " << frames.GetValue() << std::endl << std::endl;
 
     return 0;
 }

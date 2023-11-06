@@ -55,24 +55,23 @@ namespace
                               Samples samples,
                               Samplerate samplerate,
                               int subframesDenom)
+
     {
         const int64_t samplesFloor =
             FrameBoundary::Floor(framerate, samples, samplerate).GetValue();
-        if (samples.GetValue() > samplesFloor)
-        {
-            const int64_t sampleOffset = samples.GetValue() - samplesFloor;
-            const Samples nextSample(samples.GetValue() + 1);
-            const int64_t samplesCeiling =
-                FrameBoundary::Ceiling(framerate, nextSample, samplerate).GetValue();
-            const int64_t samplesPerFrame = samplesCeiling - samplesFloor;
-            assert(samplesPerFrame > 0);
-            const int64_t halfSamplesPerFrame = samplesPerFrame / 2;
-            return (subframesDenom * sampleOffset +
-                    (sampleOffset > halfSamplesPerFrame ? 0 : samplesPerFrame - 1)) /
-                   samplesPerFrame;
-        }
-        assert(samples.GetValue() == samplesFloor);
-        return 0;
+        const int64_t sampleOffset = samples.GetValue() - samplesFloor;
+        const Samples nextSample(samples.GetValue() + 1);
+        const int64_t samplesCeiling =
+            FrameBoundary::Ceiling(framerate, nextSample, samplerate).GetValue();
+        const int64_t samplesInCurrentFrame =
+            samplesCeiling - samplesFloor; // on some framerates, the number of samples per frame
+                                           // can vary slightly from frame to frame
+
+        // The return expression is equivalent to:
+        // return std::round(float(subframesDenom * sampleOffset) / float(samplesInCurrentFrame));
+        // but expressed in integer arithmetic
+        return (subframesDenom * sampleOffset * 2 + samplesInCurrentFrame) /
+               (samplesInCurrentFrame * 2);
     }
 }
 
@@ -84,6 +83,11 @@ TimecodeSubframes::TimecodeSubframes(Framerate framerate,
 , mSubframesNum(CalculateSubframesNum(framerate, samples, samplerate, subframesDenom))
 , mSubframesDenom(subframesDenom)
 {
+    if (mSubframesNum == mSubframesDenom)
+    {
+        mSubframesNum = 0;
+        ++mTimecode;
+    }
 }
 
 namespace
@@ -102,6 +106,7 @@ std::string TimecodeSubframes::ToString(bool showZeroSubframes) const
     {
         return mTimecode.ToString();
     }
+    // Fill the numerator with the needed 0's
     int i = mSubframesDenom - 1;
     int j = 1;
     while (i != 0)
@@ -109,6 +114,7 @@ std::string TimecodeSubframes::ToString(bool showZeroSubframes) const
         i /= 10;
         j *= 10;
     }
+    // j is 10^n where 10^n is the smaller number >= mSubframeDenom
     i = mSubframesNum;
     while (j != 1)
     {

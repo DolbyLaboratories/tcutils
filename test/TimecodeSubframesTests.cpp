@@ -47,6 +47,34 @@ namespace
     }
 }
 
+TEST_F(TimecodeSubframesTests, SubframeBasicCases)
+{
+    auto toFrames = [](TimecodeSubframes t) { return t.GetTimecode().ToFrames().GetValue(); };
+
+    const Framerate fr(24);
+    const Samplerate sr(48000);
+    const int samplesPerFrame = 48000 / 24;
+    const int denom           = 100;
+
+    TimecodeSubframes sample1(fr, Samples(1), sr, denom);
+    ASSERT_EQ(0, sample1.GetSubframesNum());
+    ASSERT_EQ(0, toFrames(sample1));
+
+    TimecodeSubframes frameMinus1Sample(fr, Samples(samplesPerFrame - 1), sr, denom);
+    ASSERT_EQ(0, frameMinus1Sample.GetSubframesNum());
+    ASSERT_EQ(1, toFrames(frameMinus1Sample));
+
+    // test that we change to numerator 1 at samplesPerFrame / denom / 2
+    // that is: mid-subframe rounds up
+    TimecodeSubframes midSubframeMinus1Sample(
+        fr, Samples(samplesPerFrame / denom / 2 - 1), sr, denom);
+    TimecodeSubframes midSubframe(fr, Samples(samplesPerFrame / denom / 2), sr, denom);
+    ASSERT_EQ(0, midSubframeMinus1Sample.GetSubframesNum());
+    ASSERT_EQ(0, toFrames(midSubframeMinus1Sample));
+    ASSERT_EQ(1, midSubframe.GetSubframesNum());
+    ASSERT_EQ(0, toFrames(midSubframe));
+}
+
 TEST_F(TimecodeSubframesTests, SubframeContinuity)
 {
     std::vector<int> denoms{10, 80, 100};
@@ -65,14 +93,17 @@ TEST_F(TimecodeSubframesTests, SubframeContinuity)
                 TimecodeSubframes result(framerate, Samples(i), sr, denom);
                 if (i != 0)
                 {
-                    if (result.GetSubframesNum() == 0)
+                    if (result.GetSubframesNum() < prev.GetSubframesNum())
                     {
                         Timecode tc = prev.GetTimecode();
                         ++tc;
                         ASSERT_EQ(result.GetTimecode(), tc);
+                        ASSERT_EQ(denom - 1, prev.GetSubframesNum());
+                    }
+                    else if (result.GetTimecode() != prev.GetTimecode())
+                    {
                         ASSERT_GE(i - frameStart, frameLengthSamples);
                         ASSERT_LE(i - frameStart, frameLengthSamples + 1);
-                        ASSERT_EQ(denom - 1, prev.GetSubframesNum());
                         frameStart = i;
                     }
                     else
@@ -91,33 +122,44 @@ TEST_F(TimecodeSubframesTests, SubframeContinuity)
 TEST_F(TimecodeSubframesTests, SubframeComplementary)
 {
     std::vector<int> denoms{10, 80, 100};
-
     for (auto denom : denoms)
     {
         for (auto framerate : Framerate::values())
         {
             const Samplerate sr(48000.0);
-            TimecodeSubframes results[2400];
-            int64_t frameStart = 0;
-            for (int64_t i = 0; i < 48000 * 3; i++)
+            const Timecode totalTime(framerate, 0, 0, 2, 0);
+            const int64_t totalSamples       = totalTime.ToSamples(sr).GetValue();
+            const int64_t expectedNumerators = totalTime.ToFrames().GetValue() * denom;
+
+            // we expect an exact match if the amount of samples per subframe is integer and even
+            const bool subframeLengthIsInteger =
+                !framerate.IsRatio1001() &&
+                (48000 / framerate.GetFrameCount() / denom) * framerate.GetFrameCount() * denom ==
+                    48000;
+            const bool subframeLengthIsEven =
+                subframeLengthIsInteger && ((48000 / framerate.GetFrameCount() / denom) % 2) == 0;
+            const bool exactMatch = subframeLengthIsInteger && subframeLengthIsEven;
+
+            for (int i = 0; i < totalSamples; i++)
             {
-                TimecodeSubframes result(framerate, Samples(i), sr, denom);
-                int64_t j = i - frameStart;
-                ASSERT_LT(j, 2400);
-                if (result.GetSubframesNum() == 0)
+                TimecodeSubframes subframe(framerate, Samples(i), sr, denom);
+                TimecodeSubframes compSubframe(framerate, Samples(totalSamples - i - 1), sr, denom);
+
+                auto toNumeratorCount = [=](const TimecodeSubframes& subframe) {
+                    return subframe.GetSubframesNum() +
+                           subframe.GetTimecode().ToFrames().GetValue() * denom;
+                };
+                auto numeratorsSum = toNumeratorCount(subframe) + toNumeratorCount(compSubframe);
+
+                if (exactMatch)
                 {
-                    if (i != 0)
-                    {
-                        for (int k = 1; k < j; k++)
-                        {
-                            ASSERT_EQ(denom,
-                                      results[k].GetSubframesNum() +
-                                          results[j - k].GetSubframesNum());
-                        }
-                    }
-                    frameStart = i;
+                    ASSERT_EQ(expectedNumerators, numeratorsSum);
                 }
-                results[j] = result;
+                else
+                {
+                    ASSERT_GE(numeratorsSum, expectedNumerators - 1);
+                    ASSERT_LE(numeratorsSum, expectedNumerators);
+                }
             }
         }
     }

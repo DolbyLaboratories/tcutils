@@ -66,9 +66,11 @@ public:
     /**
      * @brief Construct from samples
      *
-     * Creates a Timecode for the frame this sample is in and express the remainder
-     * in subframes, rounding away from to nearest frame boundary, so that only
-     * the sample that matches the frame boundary exactly results in zero subframes.
+     * Expresses the given sample position as a Timecode plus a reminder expressed as a
+     * subframe, which is a numerator for a given denominator (typically 100). The position is
+     * rounded to the nearest subframe.
+     * Note that when the last subframe is rounded up, the Timecode will be the next frame with 0
+     * subframes.
      */
     explicit TimecodeSubframes(Framerate framerate,
                                Samples samples,
