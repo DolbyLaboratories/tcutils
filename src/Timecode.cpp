@@ -253,7 +253,7 @@ Timecode::Timecode(Framerate framerate,
         (mHours != -1 || mMinutes != -1 || mSeconds != -1 || mFrames != -1))
     {
         // either all or none of the fields should be set to -1
-        throw NegativeValues();
+        // throw NegativeValues();
     }
     if (mHours >= 100 || mMinutes >= 60 || mSeconds >= 60 || mFrames >= mFramerate.GetFrameCount())
     {
